@@ -1,0 +1,150 @@
+---
+title: "Iris Project"
+author: "Annie Dang"
+date: "10/16/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages("ellipse")
+library(ellipse)
+library(caret)
+library(ggplot2)
+#install.packages("WVPlots")
+library(WVPlots)
+#install.packages('cowplot')
+library(cowplot)
+```
+
+## Initial Exploratory Data Analysis
+
+Here we are loading in the iris dataset with "read.csv" and displaying the first few entries of this dataset using the head() function. This process is very similar to that of pandas.read_csv() and df.head().
+There are 5 columns, 4 of which being quantitative (with the first one being and index column) and 1 being qualitative. The last column contains the labels of the iris species.
+```{r iris}
+iris = read.csv("/Users/anniedang/Desktop/iris.csv")
+head(iris)
+```
+
+We are now displaying the frequencies of each species present in the iris dataset. This process is appending a percentage column to a grouped table of iris species. This process can be imitated in pandas using the groupby function, combined with creating a new column of percentages. In this dataset, there is an equal distribution of each species. There are 150 entries in this dataset.
+```{r frquency}
+cbind(freq = table(iris$species), percentage=prop.table(table(iris$species)) * 100)
+```
+
+This displays six desciptive statistics relating to the different quantitative columns of this dataset. This process is very similar to that of df.describe in Python's pandas. 
+```{r summary}
+summary(iris)
+```
+
+## Visualizations
+
+First, we split the dataset into independent and dependent variables using indexing, very similar to python indexing.
+```{r splitting dataset into input and output}
+x <- iris[ , 2:5]
+y <- iris[ , 6]
+```
+
+Here, we diplay barplots to describe the distribution of the first four columns of the iris dataset; we can do the same in python using matplotlib's bar function. We see here that petal length and petal width has the largest variance in its values and sepal width has the least variance in its values. Sepal width also has the most outliers.
+```{r barplot, echo=FALSE}
+par(mfrow=c(1,4))  
+for(i in 2:5) {
+  boxplot(iris[,i], main=names(iris)[i])
+}
+```
+This is a pairplot of the iris dataset. As we can see, the species have distinct clustering especially when compairing petal length and sepal length, petal length and petal width, petal width and sepal width, or sepal width and petal length. Iris-setosa can be linearly separated from the other two species, while there is some overlap between iris-versicolor and iris-virginica. This implies that these iris attributes may be good features to use for modeling. This process of a pairplot is very similar to that of Python's seaborn pairplot.
+```{r pairplot}
+colormap = c('#a6611a', '#dfc27d', '#018571')
+PairPlot(iris, colnames(iris)[2:5], "Iris plot",
+         group_var = "species", palette=NULL) +
+         ggplot2::scale_color_manual(values=colormap)
+```
+Assessing the boxplots of each feature stratrified by species, we see that there is less of an overlapping distribution between each species for sepal length, petal length, and petal width.
+```{r sepal_length boxplot}
+par(mfrow=c(2,2))
+boxplot(sepal_length ~ species, data=iris,
+     main="Box Plot",
+     xlab="Species",
+     ylab="Sepal Length")
+boxplot(sepal_width ~ species, data=iris,
+     main="Box Plot",
+     xlab="Species",
+     ylab="Sepal Width")
+boxplot(petal_length ~ species, data=iris,
+     main="Box Plot",
+     xlab="Species",
+     ylab="Petal Length")
+boxplot(petal_width ~ species, data=iris,
+     main="Box Plot",
+     xlab="Species",
+     ylab="Petal Width")
+```
+
+A diffirent view of the different iris attributes stratified by species. In this view, we can see that the distributions are in fact a little more overlapping than the boxplots would suggest.
+```{r distribution,message=FALSE, results='hide'}
+iris1 = ggplot(iris, aes(x = sepal_length, color = species)) + geom_density()
+iris2 =ggplot(iris, aes(x = sepal_width, color = species)) + geom_density()
+iris3 =ggplot(iris, aes(x = petal_length, color = species)) + geom_density()
+iris4 =ggplot(iris, aes(x = petal_width, color = species)) + geom_density()
+
+plot_grid(iris1, iris2, iris3, iris4, labels = "AUTO");
+```
+
+Petal length and petal width have the strongest positive correlation. However, petal length and sepal length as well as petal width and sepal length also have very strong postive correlations.
+```{r correlation}
+cor(x)
+```
+
+
+## Insights from EDA
+
+From our EDA we can see that:
+
+
+1. Setosa has the smallest petal length and petal width, while virginica has the largest petal length and width. Versicolor has avergae petal length and width.
+
+
+2. Setosa is distringuishable and have very different characteristics (linearly separable) from the other species.
+
+
+3. Setosa has smaller attributes and less outliers, versicolor has average attributes, and virginica has the longest attributes.
+
+
+4. The strongest correlation is between petal width and petal length.
+
+
+5. Versicolor and virginica are hard to separate for most characteristics
+
+## Modeling
+Since all features (petal length, petal width, sepal length, sepal width) seem to be good indicators for species, all features will be used for modeling. Additionally, since the pairplot shows goos separability between the species for different characteristics, random forst and support vector machines (SVM) may be the best choice for modeling. 
+
+```{r}
+training_idx <- createDataPartition(iris$species, p=0.74, list = FALSE)
+testing <- iris[-training_idx, 2:6]
+iris_training <- iris[training_idx, 2:6]
+```
+
+
+```{r SVM and RF, message=FALSE, results='hide'}
+# 10 fold cross validation and accuracy as our performance metric
+cv <- trainControl(method="cv", number=10)
+metric <- "Accuracy"
+
+#SVM
+fit.svm <- train(species~., data=iris_training, method="svmRadial", metric=metric, trControl=cv)
+
+#Random Forest
+fit.rf <- train(species~., data = iris_training, method="rf", metric = metric, trControl = cv)
+```
+
+Random Forest does seem to have better performance. Althoug, random forests are known to overfit to the training set by virtue of the algorithm's splitting nature.
+```{r}
+summary(resamples(list(svm=fit.svm, rf=fit.rf)))
+```
+
+Surprisingly, we get 100% accuracy on the testing data.
+```{r}
+predictions <- predict(fit.rf, testing)
+confusionMatrix(as.factor(testing$species), as.factor(predictions))
+```
+
+
